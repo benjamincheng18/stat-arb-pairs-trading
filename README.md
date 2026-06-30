@@ -62,61 +62,47 @@ This project is grounded in cointegration theory from ECON4304 (HKUST) — speci
 
 ### Step 1 — Cointegration Screening (`cointegration.py`)
 
-Two price series P₁(t) and P₂(t) are cointegrated if their linear combination is stationary:
+We test every unique pair of stocks (1,596 pairs total) for cointegration using the Engle-Granger two-step procedure. First, we regress one stock's price on the other via OLS to estimate the long-run hedge ratio and extract residuals. Then we run an Augmented Dickey-Fuller test on those residuals — if they are stationary (mean-reverting), the pair is cointegrated.
 
-Observation:  y(t) = β(t)·x(t) + ε(t),    ε(t) ~ N(0, R)
+Both regression directions are tested for each pair (stock A on B, and B on A), and a pair is only accepted if **both** directions pass. To control false positives across 3,192 simultaneous hypothesis tests, we apply **Benjamini-Hochberg FDR correction** at α=0.05, which adjusts p-value thresholds based on rank to limit the expected proportion of false discoveries.
 
-Transition:   β(t) = β(t-1) + η(t),         η(t) ~ N(0, Q)
+**Result**: 42 cointegrated pairs identified out of 1,596 tested (2.6%).
 
-The Kalman filter recursively estimates β(t) via predict and update steps:
+---
 
-Predict
+### Step 2 — Dynamic Hedge Ratio (`kalman_filter.py`)
 
-β_pred = β(t-1)
+A fixed OLS hedge ratio becomes stale as market relationships evolve over time. We use a **Kalman filter** to estimate a time-varying hedge ratio that updates daily as new price data arrives.
 
-P_pred = P(t-1) + Q
+The filter treats the hedge ratio as a hidden state that evolves gradually over time. At each timestep it runs two steps: a **predict** step (the hedge ratio probably hasn't changed much since yesterday) and an **update** step (new prices arrive and we revise our estimate accordingly). The Kalman gain automatically balances trust between the prior estimate and new data — adapting faster when uncertainty is high, more conservatively when the estimate has stabilised.
 
-Update
-
-innovation = y(t) − β_pred·x(t)
-
-S          = x(t)²·P_pred + R
-
-K          = P_pred·x(t) / S        # Kalman gain
-
-β(t)       = β_pred + K·innovation
-
-P(t)       = (1 − K·x(t))·P_pred
-
-The filter is implemented from scratch (no `pykalman`) with `delta=1e-4` parameterising process noise as `Q = delta/(1-delta)`. β is initialised from the OLS estimate to avoid the cold-start drift problem. The dynamic spread is:
-
-spread(t) = y(t) − β(t)·x(t)
+The filter is implemented from scratch without external libraries, initialized from the OLS hedge ratio to avoid cold-start instability. The output is a daily dynamic spread series that tracks the true time-varying relationship between the two stocks.
 
 ---
 
 ### Step 3 — Signal Generation (`signals.py`)
 
-The spread is normalised into a rolling z-score over a 60-day lookback window:
-
-z(t) = (spread(t) − μ₆₀(t)) / σ₆₀(t)
+The dynamic spread is normalized into a **rolling z-score** over a 60-day lookback window, measuring how many standard deviations the current spread is from its recent mean.
 
 Trading rules:
-- z(t) < −2.0 → **long spread** (buy y, sell x)
-- z(t) > +2.0 → **short spread** (sell y, buy x)
-- |z(t)| < 0.5 → **exit**
-- Otherwise → hold previous position (forward-fill)
+- z < −2.0 → **long spread** (buy stock y, sell stock x)
+- z > +2.0 → **short spread** (sell stock y, buy stock x)
+- |z| < 0.5 → **exit position**
+- Otherwise → hold previous position
+
+The 60-day window is long enough to estimate a stable mean and standard deviation, while short enough to adapt to changing market regimes.
 
 ---
 
 ### Step 4 — Backtest (`backtest.py`)
 
-Daily normalised P&L:
+Daily P&L is computed as the lagged signal multiplied by the daily spread change, normalized by the previous day's spread value to produce percentage returns comparable across pairs. Transaction costs of 10 basis points are deducted on every signal change.
 
-pnl(t) = signal(t-1) × (spread(t) − spread(t-1)) / |spread(t-1)|
+Performance is evaluated on two levels:
 
-Transaction costs of 10bps are deducted on every signal change. Performance metrics: annualised Sharpe ratio, maximum drawdown, hit rate, average trade duration.
+- **In-sample backtest**: runs the full pipeline on all 42 cointegrated pairs across the entire 2023-2026 period, reporting Sharpe ratio, max drawdown, hit rate, and average trade duration per pair.
 
-**Walk-forward validation**: a rolling walk-forward backtest rescreens pairs on each 630-day training window and evaluates signals on the subsequent 60-day out-of-sample test window. Pairs are never selected using future data.
+- **Walk-forward validation**: slides a 630-day training window forward in 60-day steps, rescreening pairs and refitting the Kalman filter at each fold using only past data. Signals are then evaluated on the subsequent 60-day out-of-sample window. This eliminates look-ahead bias and provides a genuine test of out-of-sample predictive power.
 
 ---
 
