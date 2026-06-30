@@ -63,21 +63,33 @@ This project is grounded in cointegration theory from ECON4304 (HKUST) — speci
 ### Step 1 — Cointegration Screening (`cointegration.py`)
 
 Two price series P₁(t) and P₂(t) are cointegrated if their linear combination is stationary:
+
 Observation:  y(t) = β(t)·x(t) + ε(t),    ε(t) ~ N(0, R)
+
 Transition:   β(t) = β(t-1) + η(t),         η(t) ~ N(0, Q)
 
 The Kalman filter recursively estimates β(t) via predict and update steps:
+
 Predict
+
 β_pred = β(t-1)
+
 P_pred = P(t-1) + Q
+
 Update
+
 innovation = y(t) − β_pred·x(t)
+
 S          = x(t)²·P_pred + R
+
 K          = P_pred·x(t) / S        # Kalman gain
+
 β(t)       = β_pred + K·innovation
+
 P(t)       = (1 − K·x(t))·P_pred
 
 The filter is implemented from scratch (no `pykalman`) with `delta=1e-4` parameterising process noise as `Q = delta/(1-delta)`. β is initialised from the OLS estimate to avoid the cold-start drift problem. The dynamic spread is:
+
 spread(t) = y(t) − β(t)·x(t)
 
 ---
@@ -85,6 +97,7 @@ spread(t) = y(t) − β(t)·x(t)
 ### Step 3 — Signal Generation (`signals.py`)
 
 The spread is normalised into a rolling z-score over a 60-day lookback window:
+
 z(t) = (spread(t) − μ₆₀(t)) / σ₆₀(t)
 
 Trading rules:
@@ -98,6 +111,7 @@ Trading rules:
 ### Step 4 — Backtest (`backtest.py`)
 
 Daily normalised P&L:
+
 pnl(t) = signal(t-1) × (spread(t) − spread(t-1)) / |spread(t-1)|
 
 Transaction costs of 10bps are deducted on every signal change. Performance metrics: annualised Sharpe ratio, maximum drawdown, hit rate, average trade duration.
@@ -198,6 +212,7 @@ pnl_series, fold_summary = walk_forward_backtest(prices)
 ```
 
 **Project structure**:
+```
 stat-arb-pairs-trading/
 ├── src/
 │   ├── data_loader.py       # Universe definition and price fetching
@@ -209,7 +224,7 @@ stat-arb-pairs-trading/
 │   └── test.ipynb           # Full pipeline exploration
 ├── requirements.txt
 └── README.md
-
+```
 ---
 
 *Built by Benjamin Cheng — HKUST Information Systems & Economics*  
