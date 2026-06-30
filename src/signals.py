@@ -10,10 +10,6 @@ def compute_zscore(
     """
     Compute rolling z-score of the Kalman filter spread.
 
-    Args:
-        kf_df  : output from kalman_filter() with column 'spread'
-        window : rolling lookback window in trading days
-
     Returns:
         DataFrame with columns [spread, zscore]
     """
@@ -46,16 +42,11 @@ def generate_signals(
         -1 = short spread (spread too high, sell y buy x)
          0 = no position / exit
 
-    Args:
-        zscore_df : output from compute_zscore() with column 'zscore'
-        entry_z   : z-score threshold to enter a trade
-        exit_z    : z-score threshold to exit a trade
-
     Returns:
         zscore_df with added column [signal]
     """
     zscore = zscore_df["zscore"]
-
+    zscore_df = zscore_df.copy()
     zscore_df["signal"] = np.where(
         zscore < -entry_z, 1,
         np.where(
